@@ -92,6 +92,29 @@ func (t *Timeline) Extend(reservationID string, newEnd time.Time) (Interval, err
 	return updated, nil
 }
 
+// CheckExtend validates an extension without publishing it, so callers can
+// preflight every resource before mutating any of them.
+func (t *Timeline) CheckExtend(reservationID string, newEnd time.Time) (Interval, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	_, _, current, found := t.findLocked(reservationID)
+	if !found {
+		return Interval{}, fmt.Errorf("reservation %s not found", reservationID)
+	}
+	if current.Status == Released {
+		return Interval{}, fmt.Errorf("reservation %s is already released", reservationID)
+	}
+	updated := current
+	updated.End = newEnd
+	if err := updated.Validate(); err != nil {
+		return Interval{}, err
+	}
+	if conflict := t.conflictLocked(updated, reservationID); conflict != nil {
+		return Interval{}, conflict
+	}
+	return updated, nil
+}
+
 func (t *Timeline) Activate(reservationID string) (Interval, error) {
 	return t.setStatus(reservationID, Active)
 }

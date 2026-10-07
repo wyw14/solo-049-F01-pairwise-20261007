@@ -102,8 +102,14 @@ func NewRuntime(stateRoot string) (*Runtime, error) {
 	}
 	windowRecompute := passsvc.NewWindowRecomputer(windows, trail)
 	replanner := passsvc.NewReplanner(passes, windowRecompute, commands, trail)
-	extensions := passsvc.NewExtensionService(passes, timeline, fleet, trail)
 	deadlines := passsvc.NewDeadlineManager(clockService)
+	extensions, err := passsvc.NewExtensionService(paths, passsvc.ExtensionDeps{
+		Passes: passes, Timeline: timeline, Fleet: fleet, Deadlines: deadlines,
+		Queue: commands, RF: rfController, Recorder: recorderManager, Windows: windowRecompute, Audit: trail,
+	})
+	if err != nil {
+		return nil, err
+	}
 	unlocker := receiver.NewUnlocker(trail)
 	finalizer := passsvc.NewFinalizer(passes, recorderManager, unlocker, trail, 250*time.Millisecond)
 	attempts, err := receiver.NewAttemptDispatcher(paths, trail)

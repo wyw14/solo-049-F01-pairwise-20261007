@@ -106,6 +106,25 @@ func (m *Manager) List() []Segment {
 	return values
 }
 
+// ExtendExpectation moves the recording expectation of the pass's active
+// segment so drain and seal accounting keep expecting frames through the
+// extended window. It reports found=false when no segment is recording yet.
+func (m *Manager) ExtendExpectation(passID string, los time.Time) (Segment, bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, current := range m.sessions {
+		if current.segment.PassID == passID && current.segment.Status != Sealed && current.segment.Status != Aborted {
+			current.segment.ExpectedLOS = los
+			if err := m.flushLocked(); err != nil {
+				return Segment{}, false, err
+			}
+			_, _ = m.audit.Record(audit.Event{Component: "recorder", Action: "expectation.extended", Subject: current.segment.ID, Fields: map[string]any{"pass_id": passID, "expected_los": los}})
+			return current.segment, true, nil
+		}
+	}
+	return Segment{}, false, nil
+}
+
 func (m *Manager) StopForFailure(passID, attemptID, reason string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

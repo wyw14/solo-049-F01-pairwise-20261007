@@ -67,6 +67,23 @@ func (m *DeadlineManager) ApplyCorrection(correction stationclock.Correction) {
 	}
 }
 
+// Extend moves the civil LOS and, while a monotonic deadline is active, shifts
+// it by the same amount so both deadline views track the extended window.
+func (m *DeadlineManager) Extend(passID string, newLOS time.Time, extra time.Duration) (Deadline, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	deadline, found := m.deadlines[passID]
+	if !found {
+		return Deadline{}, fmt.Errorf("deadline for pass %s not found", passID)
+	}
+	deadline.CivilLOS = newLOS
+	if !deadline.MonotonicLOS.IsZero() {
+		deadline.MonotonicLOS = deadline.MonotonicLOS.Add(extra)
+	}
+	m.deadlines[passID] = deadline
+	return deadline, nil
+}
+
 func (m *DeadlineManager) Get(passID string) (Deadline, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

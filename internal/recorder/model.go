@@ -28,6 +28,7 @@ type Segment struct {
 	FramesWritten   int           `json:"frames_written"`
 	FramesBuffered  int           `json:"frames_buffered"`
 	StartedAt       time.Time     `json:"started_at"`
+	ExpectedLOS     time.Time     `json:"expected_los,omitempty"`
 	SealedAt        time.Time     `json:"sealed_at,omitempty"`
 	SealReason      string        `json:"seal_reason,omitempty"`
 }

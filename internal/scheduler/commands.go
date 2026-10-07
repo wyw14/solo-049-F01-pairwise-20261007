@@ -68,6 +68,28 @@ func (q *CommandQueue) Replace(passID string, revision int64, commands []Pointin
 	return store.WriteJSON(q.path, q.commands)
 }
 
+// Append adds commands to the pass's active revision without retiring what is
+// already queued, which keeps an in-progress track executable while its tail
+// is extended.
+func (q *CommandQueue) Append(passID string, revision int64, commands []PointingCommand) error {
+	if passID == "" || revision < 1 || len(commands) == 0 {
+		return fmt.Errorf("pass, revision and pointing commands are required")
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if active, ok := q.active[passID]; ok && active != revision {
+		return fmt.Errorf("pass %s tracks pointing revision %d, cannot append revision %d", passID, active, revision)
+	}
+	for _, command := range commands {
+		command.ID = uuid.NewString()
+		command.PassID = passID
+		command.Revision = revision
+		q.commands = append(q.commands, command)
+	}
+	q.active[passID] = revision
+	return store.WriteJSON(q.path, q.commands)
+}
+
 func (q *CommandQueue) Due(now time.Time) []PointingCommand {
 	q.mu.RLock()
 	defer q.mu.RUnlock()

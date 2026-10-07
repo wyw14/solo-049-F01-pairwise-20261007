@@ -62,6 +62,52 @@ func (c *Controller) Apply(plan Plan) (State, error) {
 	return state, nil
 }
 
+// CheckChains verifies every chain exists and is not planned for another pass.
+func (c *Controller) CheckChains(passID string, chainIDs []string) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	for _, id := range chainIDs {
+		state, found := c.states[id]
+		if !found {
+			return fmt.Errorf("RF chain %s not found", id)
+		}
+		if state.PassID != "" && state.PassID != passID {
+			return fmt.Errorf("RF chain %s is planned for pass %s", id, state.PassID)
+		}
+	}
+	return nil
+}
+
+// Renew re-asserts receive chain ownership for an extended pass window without
+// changing any tuning. All chains are validated before any state is mutated.
+func (c *Controller) Renew(passID string, chainIDs []string) error {
+	if passID == "" || len(chainIDs) == 0 {
+		return fmt.Errorf("pass and RF chains are required")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, id := range chainIDs {
+		state, found := c.states[id]
+		if !found {
+			return fmt.Errorf("RF chain %s not found", id)
+		}
+		if state.PassID != "" && state.PassID != passID {
+			return fmt.Errorf("RF chain %s is planned for pass %s", id, state.PassID)
+		}
+	}
+	for _, id := range chainIDs {
+		state := c.states[id]
+		state.PassID = passID
+		state.UpdatedAt = time.Now().UTC()
+		c.states[id] = state
+	}
+	if err := c.flushLocked(); err != nil {
+		return err
+	}
+	_, _ = c.audit.Record(audit.Event{Component: "rf", Action: "plan.renewed", Subject: passID, Fields: map[string]any{"chains": chainIDs}})
+	return nil
+}
+
 func (c *Controller) EnableTransmit(chainID string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
