@@ -16,6 +16,7 @@ type State struct {
 	CenterHz         int64        `json:"center_hz"`
 	DopplerHz        int64        `json:"doppler_hz"`
 	Polarization     Polarization `json:"polarization"`
+	PlanUntil        time.Time    `json:"plan_until,omitempty"`
 	TransmitEnabled  bool         `json:"transmit_enabled"`
 	InhibitOperation string       `json:"inhibit_operation,omitempty"`
 	UpdatedAt        time.Time    `json:"updated_at"`

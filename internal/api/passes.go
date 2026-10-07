@@ -1,6 +1,7 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
@@ -80,18 +81,23 @@ func (r *Runtime) reservePass(writer http.ResponseWriter, request *http.Request)
 
 func (r *Runtime) extendPass(writer http.ResponseWriter, request *http.Request) {
 	var input struct {
-		Seconds int64 `json:"seconds"`
+		Seconds   int64  `json:"seconds"`
+		RequestID string `json:"request_id"`
 	}
 	if err := decodeJSON(request, &input); err != nil {
 		writeError(writer, err)
 		return
 	}
-	value, err := r.Extensions.Extend(chi.URLParam(request, "passID"), time.Duration(input.Seconds)*time.Second)
+	result, err := r.Extensions.Extend(chi.URLParam(request, "passID"), input.RequestID, time.Duration(input.Seconds)*time.Second)
 	if err != nil {
+		if errors.Is(err, passsvc.ErrExtensionConflict) {
+			writeJSON(writer, http.StatusConflict, result)
+			return
+		}
 		writeError(writer, err)
 		return
 	}
-	writeJSON(writer, http.StatusOK, value)
+	writeJSON(writer, http.StatusOK, result)
 }
 
 func (r *Runtime) acquirePass(writer http.ResponseWriter, request *http.Request) {

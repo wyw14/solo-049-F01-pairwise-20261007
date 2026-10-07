@@ -53,12 +53,44 @@ func (c *Controller) Apply(plan Plan) (State, error) {
 	state.CenterHz = plan.CenterHz
 	state.DopplerHz = plan.DopplerHz
 	state.Polarization = plan.Polarization
+	state.PlanUntil = time.Time{}
 	state.UpdatedAt = time.Now().UTC()
 	c.states[plan.ChainID] = state
 	if err := c.flushLocked(); err != nil {
 		return State{}, err
 	}
 	_, _ = c.audit.Record(audit.Event{Component: "rf", Action: "plan.applied", Subject: plan.ChainID, Fields: map[string]any{"pass_id": plan.PassID, "center_hz": plan.CenterHz, "doppler_hz": plan.DopplerHz}})
+	return state, nil
+}
+
+// ExtendPlan moves the chain's plan validity horizon out to until. The
+// horizon is monotonic: an earlier horizon than the current one is ignored,
+// which keeps replays of the same extension a no-op.
+func (c *Controller) ExtendPlan(chainID, passID string, until time.Time) (State, error) {
+	if chainID == "" || passID == "" || until.IsZero() {
+		return State{}, fmt.Errorf("chain, pass and plan horizon are required")
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	state, found := c.states[chainID]
+	if !found {
+		return State{}, fmt.Errorf("RF chain %s not found", chainID)
+	}
+	if state.PassID == "" {
+		return State{}, fmt.Errorf("RF chain %s has no plan to extend", chainID)
+	}
+	if state.PassID != passID {
+		return State{}, fmt.Errorf("RF chain %s is planned for pass %s", chainID, state.PassID)
+	}
+	if until.After(state.PlanUntil) {
+		state.PlanUntil = until
+		state.UpdatedAt = time.Now().UTC()
+		c.states[chainID] = state
+		if err := c.flushLocked(); err != nil {
+			return State{}, err
+		}
+		_, _ = c.audit.Record(audit.Event{Component: "rf", Action: "plan.extended", Subject: chainID, Fields: map[string]any{"pass_id": passID, "plan_until": until}})
+	}
 	return state, nil
 }
 

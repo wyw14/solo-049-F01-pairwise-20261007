@@ -55,6 +55,24 @@ func (m *DeadlineManager) Activate(passID string, duration time.Duration) (Deadl
 	return deadline, nil
 }
 
+// Extend re-anchors the deadline to newCivilLOS. When the pass has an active
+// monotonic deadline it is recomputed from the same horizon, so replaying an
+// extension with the same target is a no-op.
+func (m *DeadlineManager) Extend(passID string, newCivilLOS time.Time) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	deadline, found := m.deadlines[passID]
+	if !found {
+		return fmt.Errorf("deadline for pass %s not found", passID)
+	}
+	deadline.CivilLOS = newCivilLOS
+	if !deadline.MonotonicLOS.IsZero() {
+		deadline.MonotonicLOS = m.clock.MonotonicDeadline(time.Until(newCivilLOS))
+	}
+	m.deadlines[passID] = deadline
+	return nil
+}
+
 func (m *DeadlineManager) ApplyCorrection(correction stationclock.Correction) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

@@ -65,6 +65,29 @@ func (t *Timeline) Reserve(passID, antennaID string, start, end time.Time) (Inte
 	return value, nil
 }
 
+// CheckExtend validates an extension without mutating the timeline and
+// returns the reservation as it currently stands.
+func (t *Timeline) CheckExtend(reservationID string, newEnd time.Time) (Interval, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+	_, _, current, found := t.findLocked(reservationID)
+	if !found {
+		return Interval{}, fmt.Errorf("reservation %s not found", reservationID)
+	}
+	if current.Status == Released {
+		return Interval{}, fmt.Errorf("reservation %s is already released", reservationID)
+	}
+	updated := current
+	updated.End = newEnd
+	if err := updated.Validate(); err != nil {
+		return Interval{}, err
+	}
+	if conflict := t.conflictLocked(updated, reservationID); conflict != nil {
+		return Interval{}, conflict
+	}
+	return current, nil
+}
+
 func (t *Timeline) Extend(reservationID string, newEnd time.Time) (Interval, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
